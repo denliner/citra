@@ -185,3 +185,7 @@ void ARM_Dynarmic::PageTableChanged() {
     jit = new Dynarmic::Jit(GetUserCallbacks(interpreter_state, current_page_table));
     jits.emplace(current_page_table, std::unique_ptr<Dynarmic::Jit>(jit));
 }
+
+void ARM_Dynarmic::InvalidateCacheRange(u32 start_address, size_t length) {
+    jit->InvalidateCacheRange(start_address, length);
+}
