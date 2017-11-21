@@ -281,7 +281,7 @@ struct CachedSurface : SurfaceParams {
 
     // Upload/Download data in gl_buffer in/to this surface's texture
     void UploadGLTexture(const MathUtil::Rectangle<u32>& rect);
-    void DownloadGLTexture();
+    void DownloadGLTexture(const MathUtil::Rectangle<u32>& rect);
 };
 
 class RasterizerCacheOpenGL : NonCopyable {
