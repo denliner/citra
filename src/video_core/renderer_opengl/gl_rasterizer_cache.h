@@ -214,11 +214,11 @@ struct SurfaceParams {
     }
 
     MathUtil::Rectangle<u32> GetRect() const {
-        return { 0, 0, width, height };
+        return { 0, height, width, 0 };
     }
 
     MathUtil::Rectangle<u32> GetScaledRect() const {
-        return { 0, 0, GetScaledWidth(), GetScaledHeight() };
+        return { 0, GetScaledHeight(), GetScaledWidth(), 0 };
     }
 
     u32 PixelsInBytes(u32 size) const {

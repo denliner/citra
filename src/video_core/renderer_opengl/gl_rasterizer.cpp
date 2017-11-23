@@ -989,7 +989,7 @@ bool RasterizerOpenGL::AccelerateDisplayTransfer(const GPU::Regs::DisplayTransfe
     if (dst_surface == nullptr)
         return false;
 
-    if (config.flip_vertically)
+    if (src_surface->is_tiled != dst_surface->is_tiled && !config.flip_vertically)
         std::swap(src_rect.top, src_rect.bottom);
 
     if (!res_cache.BlitSurfaces(src_surface, src_rect, dst_surface, dst_rect))
@@ -1100,8 +1100,8 @@ bool RasterizerOpenGL::AccelerateDisplay(const GPU::Regs::FramebufferConfig& con
     u32 scaled_height = src_surface->GetScaledHeight();
 
     screen_info.display_texcoords = MathUtil::Rectangle<float>(
-        (float)src_rect.top / (float)scaled_height, (float)src_rect.left / (float)scaled_width,
-        (float)src_rect.bottom / (float)scaled_height, (float)src_rect.right / (float)scaled_width);
+        (float)src_rect.bottom / (float)scaled_height, (float)src_rect.left / (float)scaled_width,
+        (float)src_rect.top / (float)scaled_height, (float)src_rect.right / (float)scaled_width);
 
     screen_info.display_texture = src_surface->texture.handle;
 
