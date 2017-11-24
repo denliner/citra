@@ -113,85 +113,113 @@ void main() {
     GLint u_vp_size;
 } d24s8_abgr_converter;
 
-enum MortonCopyFlags : int {
-    MortonToGl = (1 << 0),
-    CheckRange = (1 << 1),
-    D24S8Format = (1 << 2),
-    BytesPerPixelBits = 3, // bits 3-4
-    GLBytesPerPixelBits = 5, // bits 5-6
-    MaxValue = (1 << 7) - 1,
-};
-
-template <int flags>
-static void MortonCopyPixels(u32 width, u32 height, const u8* in_data, u8* out_data, PAddr base, PAddr start, PAddr end) {
-    constexpr bool check_range = (flags & MortonCopyFlags::CheckRange) ? true : false;
-    constexpr bool morton_to_gl = (flags & MortonCopyFlags::MortonToGl) ? true : false;
-
-    constexpr bool D24S8format = (flags & MortonCopyFlags::D24S8Format) ? true : false;
-
-    constexpr u32 bytes_per_pixel = u32(((flags) >> MortonCopyFlags::BytesPerPixelBits) & 0x3) + 1; // 2bits, starting with value 1
-    constexpr u32 gl_bytes_per_pixel = u32(((flags) >> MortonCopyFlags::GLBytesPerPixelBits) & 0x3) + 1; // 2bits, starting with value 1
-
-    if (check_range)
-        ASSERT(start >= base && end <= (base + (width * height * bytes_per_pixel)));
-    const u32 start_offset = start - base;
-    const u32 end_offset = end - base;
-
-    for (u32 x = 0; x < width; ++x) {
-        for (u32 y = 0; y < height; ++y) {
-            const u32 coarse_x = x & ~7;
-            const u32 coarse_y = y & ~7;
-            u32 morton_offset = VideoCore::GetMortonOffset(x, y, bytes_per_pixel) + coarse_y * width * bytes_per_pixel;
-            u32 gl_pixel_index = (x + (height - 1 - y) * width) * gl_bytes_per_pixel;
-
-            if (check_range) {
-                if (morton_offset >= end_offset && coarse_x == 0 && coarse_y == 0) // Out of range and new tile
-                    return;
-                if (morton_offset < start_offset || morton_offset >= end_offset) // Out of range
-                    continue;
-            }
-
-            const size_t copy_bytes = check_range ? std::min(end_offset - morton_offset, bytes_per_pixel) : bytes_per_pixel;
-
-            const u8* const in_ptr = &in_data[morton_to_gl ? morton_offset : gl_pixel_index];
-            u8* const out_ptr = &out_data[morton_to_gl ? gl_pixel_index : morton_offset];
-
-            if (D24S8format) {
-                // Swap depth and stencil value ordering since 3DS does not match OpenGL
-                constexpr size_t swap_offset = morton_to_gl ? 3 : 1;
-                std::array<u8, 4> swap_buf;
-                std::memcpy(&swap_buf[4 - swap_offset], &in_ptr[0], swap_offset);
-                std::memcpy(&swap_buf[0], &in_ptr[swap_offset], 4 - swap_offset);
-                std::memcpy(out_ptr, &swap_buf[0], copy_bytes);
-            }
-            else {
-                std::memcpy(out_ptr, in_ptr, copy_bytes);
+template <bool morton_to_gl, PixelFormat format>
+static void MortonCopyTile(u32 stride, u8* tile_buffer, u8* gl_buffer) {
+    constexpr u32 bytes_per_pixel = SurfaceParams::GetFormatBpp(format) / 8;
+    constexpr u32 gl_bytes_per_pixel = CachedSurface::GetGLBytesPerPixel(format);
+    for (u32 y = 0; y < 8; ++y) {
+        for (u32 x = 0; x < 8; ++x) {
+            u8* tile_ptr = tile_buffer + VideoCore::MortonInterleave(x, y) * bytes_per_pixel;
+            u8* gl_ptr = gl_buffer + ((7 - y) * stride + x) * gl_bytes_per_pixel;
+            if (morton_to_gl) {
+                if (format == PixelFormat::D24S8) {
+                    gl_ptr[0] = tile_ptr[3];
+                    std::memcpy(gl_ptr + 1, tile_ptr, 3);
+                } else {
+                    std::memcpy(gl_ptr, tile_ptr, bytes_per_pixel);
+                }
+            } else {
+                if (format == PixelFormat::D24S8) {
+                    std::memcpy(tile_ptr, gl_ptr + 1, 3);
+                    tile_ptr[3] = gl_ptr[0];
+                } else {
+                    std::memcpy(tile_ptr, gl_ptr, bytes_per_pixel);
+                }
             }
         }
     }
 }
 
-template <size_t size>
-struct FunctionTable {
-public:
-    constexpr FunctionTable() : table{ GetArray(std::integral_constant<size_t, size>{}) } {};
-    constexpr auto& operator [](size_t pos) const {
-        return table[pos];
+template <bool morton_to_gl, PixelFormat format>
+static void MortonCopy(u32 stride, u32 height, u8* gl_buffer, PAddr base, PAddr start, PAddr end) {
+    constexpr u32 bytes_per_pixel = SurfaceParams::GetFormatBpp(format) / 8;
+    constexpr u32 tile_size = bytes_per_pixel * 64;
+
+    constexpr u32 gl_bytes_per_pixel = CachedSurface::GetGLBytesPerPixel(format);
+    static_assert(gl_bytes_per_pixel >= bytes_per_pixel, "");
+    gl_buffer += gl_bytes_per_pixel - bytes_per_pixel;
+
+    const PAddr aligned_down_start = base + Common::AlignDown(start - base, tile_size);
+    const PAddr aligned_start = base + Common::AlignUp(start - base, tile_size);
+    const PAddr aligned_end = base + Common::AlignDown(end - base, tile_size);
+
+    ASSERT(!morton_to_gl || (aligned_start == start && aligned_end == end));
+
+    const u32 begin_pixel_index = (aligned_down_start - base) / bytes_per_pixel;
+    u32 x = (begin_pixel_index % (stride * 8)) / 8;
+    u32 y = (begin_pixel_index / (stride * 8)) * 8;
+
+    gl_buffer += ((height - 8 - y) * stride + x) * gl_bytes_per_pixel;
+
+    auto glbuf_next_tile = [&] {
+        x = (x + 8) % stride;
+        gl_buffer += 8 * gl_bytes_per_pixel;
+        if (!x) {
+            y += 8;
+            gl_buffer -= stride * 9 * gl_bytes_per_pixel;
+        }
+    };
+
+    u8* tile_buffer = Memory::GetPhysicalPointer(start);
+
+    if (start < aligned_start && !morton_to_gl) {
+        std::array<u8, tile_size> tmp_buf;
+        MortonCopyTile<morton_to_gl, format>(stride, &tmp_buf[0], gl_buffer);
+        std::memcpy(tile_buffer, &tmp_buf[start - aligned_down_start], std::min(aligned_start, end) - start);
+
+        tile_buffer += aligned_start - start;
+        glbuf_next_tile();
     }
-private:
-    using FnType = decltype(&MortonCopyPixels<0>);
-    template <size_t pos, typename... Args>
-    constexpr auto GetArray(std::integral_constant<size_t, pos>, Args&&... args) const {
-        return GetArray(std::integral_constant<size_t, pos - 1>{}, &MortonCopyPixels<pos - 1>, std::forward<Args>(args)...);
+
+    u8* const buffer_end = tile_buffer + aligned_end - aligned_start;
+    while (tile_buffer < buffer_end) {
+        MortonCopyTile<morton_to_gl, format>(stride, tile_buffer, gl_buffer);
+        tile_buffer += tile_size;
+        glbuf_next_tile();
     }
-    template <typename... Args>
-    constexpr auto GetArray(std::integral_constant<size_t, 0>, Args&&... args) const {
-        return std::array<FnType, size>{ std::forward<Args>(args)... };
+
+    if (end > std::max(aligned_start, aligned_end) && !morton_to_gl) {
+        std::array<u8, tile_size> tmp_buf;
+        MortonCopyTile<morton_to_gl, format>(stride, &tmp_buf[0], gl_buffer);
+        std::memcpy(tile_buffer, &tmp_buf[0], end - aligned_end);
     }
-    std::array<FnType, size> table;
+}
+
+static constexpr std::array<void(*)(u32, u32, u8*, PAddr, PAddr, PAddr), 18> morton_to_gl_fns = {
+    MortonCopy<true, PixelFormat::RGBA8>, // 0
+    MortonCopy<true, PixelFormat::RGB8>, // 1
+    MortonCopy<true, PixelFormat::RGB5A1>, // 2
+    MortonCopy<true, PixelFormat::RGB565>, // 3
+    MortonCopy<true, PixelFormat::RGBA4>, // 4
+    nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, // 5 - 13
+    MortonCopy<true, PixelFormat::D16>, // 14
+    nullptr, // 15
+    MortonCopy<true, PixelFormat::D24>, // 16
+    MortonCopy<true, PixelFormat::D24S8> // 17
 };
 
-static constexpr FunctionTable<MortonCopyFlags::MaxValue + 1> MortonCopyFnTable;
+static constexpr std::array<void(*)(u32, u32, u8*, PAddr, PAddr, PAddr), 18> gl_to_morton_fns = {
+    MortonCopy<false, PixelFormat::RGBA8>, // 0
+    MortonCopy<false, PixelFormat::RGB8>, // 1
+    MortonCopy<false, PixelFormat::RGB5A1>, // 2
+    MortonCopy<false, PixelFormat::RGB565>, // 3
+    MortonCopy<false, PixelFormat::RGBA4>, // 4
+    nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, // 5 - 13
+    MortonCopy<false, PixelFormat::D16>, // 14
+    nullptr, // 15
+    MortonCopy<false, PixelFormat::D24>, // 16
+    MortonCopy<false, PixelFormat::D24S8> // 17
+};
 
 // Allocate an uninitialized texture of appropriate size and format for the surface
 static void AllocateSurfaceTexture(GLuint texture, const FormatTuple& format_tuple, u32 width, u32 height) {
@@ -668,7 +696,7 @@ void CachedSurface::LoadGLBuffer(PAddr load_start, PAddr load_end) {
         return;
 
     if (gl_buffer == nullptr) {
-        gl_buffer_size = width * height * gl_bytes_per_pixel;
+        gl_buffer_size = width * height * GetGLBytesPerPixel(pixel_format);
         gl_buffer.reset(new u8[gl_buffer_size]);
     }
 
@@ -699,6 +727,7 @@ void CachedSurface::LoadGLBuffer(PAddr load_start, PAddr load_end) {
             const auto load_interval = SurfaceInterval(load_start, load_end);
             const auto rect = GetSubRect(FromInterval(load_interval));
             ASSERT(FromInterval(load_interval).GetInterval() == load_interval);
+
             for (unsigned y = rect.bottom; y < rect.top; ++y) {
                 for (unsigned x = rect.left; x < rect.right; ++x) {
                     auto vec4 = Pica::Texture::LookupTexture(texture_src_data, x, height - 1 - y, tex_info);
@@ -707,17 +736,8 @@ void CachedSurface::LoadGLBuffer(PAddr load_start, PAddr load_end) {
                 }
             }
         } else {
-            size_t copyfn_offset = MortonCopyFlags::MortonToGl;
-            copyfn_offset |= ((GetFormatBpp() / 8) - 1) << MortonCopyFlags::BytesPerPixelBits;
-            copyfn_offset |= (gl_bytes_per_pixel - 1) << MortonCopyFlags::GLBytesPerPixelBits;
-
-            if (load_start != addr || load_end != end)
-                copyfn_offset |= MortonCopyFlags::CheckRange;
-            if (pixel_format == PixelFormat::D24S8)
-                copyfn_offset |= MortonCopyFlags::D24S8Format;
-
-            MortonCopyFnTable[copyfn_offset](width, height,
-                texture_src_data, &gl_buffer[gl_buffer_offset], addr, load_start, load_end);
+            morton_to_gl_fns[static_cast<size_t>(pixel_format)](
+                stride, height, &gl_buffer[0], addr, load_start, load_end);
         }
     }
 }
@@ -728,7 +748,7 @@ void CachedSurface::FlushGLBuffer(PAddr flush_start, PAddr flush_end) {
     if (dst_buffer == nullptr)
         return;
 
-    ASSERT(gl_buffer_size == width * height * gl_bytes_per_pixel);
+    ASSERT(gl_buffer_size == width * height * GetGLBytesPerPixel(pixel_format));
 
     //TODO: Should probably be done in ::Memory:: and check for other regions too
     //same as loadglbuffer()
@@ -762,16 +782,8 @@ void CachedSurface::FlushGLBuffer(PAddr flush_start, PAddr flush_end) {
         std::memcpy(dst_buffer + start_offset, &gl_buffer[start_offset], flush_end - flush_start);
     }
     else {
-        size_t copyfn_offset = ((GetFormatBpp() / 8) - 1) << MortonCopyFlags::BytesPerPixelBits;
-        copyfn_offset |= (gl_bytes_per_pixel - 1) << MortonCopyFlags::GLBytesPerPixelBits;
-
-        if (flush_start != addr || flush_end != end)
-            copyfn_offset |= MortonCopyFlags::CheckRange;
-        if (pixel_format == PixelFormat::D24S8)
-            copyfn_offset |= MortonCopyFlags::D24S8Format;
-
-        MortonCopyFnTable[copyfn_offset](width, height,
-            &gl_buffer[gl_buffer_offset], dst_buffer, addr, flush_start, flush_end);
+        gl_to_morton_fns[static_cast<size_t>(pixel_format)](
+            stride, height, &gl_buffer[0], addr, flush_start, flush_end);
     }
 }
 
@@ -781,11 +793,11 @@ void CachedSurface::UploadGLTexture(const MathUtil::Rectangle<u32>& rect) {
 
     // Load data from memory to the surface
 
-    ASSERT(gl_buffer_size == width * height * gl_bytes_per_pixel);
+    ASSERT(gl_buffer_size == width * height * GetGLBytesPerPixel(pixel_format));
 
     GLint x0 = static_cast<GLint>(rect.left);
     GLint y0 = static_cast<GLint>(rect.bottom);
-    size_t buffer_offset = (y0 * stride + x0) * gl_bytes_per_pixel;
+    size_t buffer_offset = (y0 * stride + x0) * GetGLBytesPerPixel(pixel_format);
 
     const FormatTuple& tuple = GetFormatTuple(pixel_format);
     GLuint target_tex = texture.handle;
@@ -808,7 +820,7 @@ void CachedSurface::UploadGLTexture(const MathUtil::Rectangle<u32>& rect) {
     cur_state.Apply();
 
     // Ensure no bad interactions with GL_UNPACK_ALIGNMENT
-    ASSERT(stride * gl_bytes_per_pixel % 4 == 0);
+    ASSERT(stride * GetGLBytesPerPixel(pixel_format) % 4 == 0);
     glPixelStorei(GL_UNPACK_ROW_LENGTH, static_cast<GLint>(stride));
 
     glActiveTexture(GL_TEXTURE0);
@@ -839,7 +851,7 @@ void CachedSurface::DownloadGLTexture(const MathUtil::Rectangle<u32>& rect) {
         return;
 
     if (gl_buffer == nullptr) {
-        gl_buffer_size = width * height * gl_bytes_per_pixel;
+        gl_buffer_size = width * height * GetGLBytesPerPixel(pixel_format);
         gl_buffer.reset(new u8[gl_buffer_size]);
     }
 
@@ -850,9 +862,9 @@ void CachedSurface::DownloadGLTexture(const MathUtil::Rectangle<u32>& rect) {
     const FormatTuple& tuple = GetFormatTuple(pixel_format);
 
     // Ensure no bad interactions with GL_PACK_ALIGNMENT
-    ASSERT(stride * gl_bytes_per_pixel % 4 == 0);
+    ASSERT(stride * GetGLBytesPerPixel(pixel_format) % 4 == 0);
     glPixelStorei(GL_PACK_ROW_LENGTH, static_cast<GLint>(stride));
-    size_t buffer_offset = (rect.bottom * stride + rect.left) * gl_bytes_per_pixel;
+    size_t buffer_offset = (rect.bottom * stride + rect.left) * GetGLBytesPerPixel(pixel_format);
 
     // If not 1x scale, blit scaled texture to a new 1x texture and use that to flush
     OGLTexture unscaled_tex;
@@ -1466,14 +1478,7 @@ Surface RasterizerCacheOpenGL::CreateSurface(const SurfaceParams& params) {
 
     surface->texture.Create();
 
-    // OpenGL needs 4 bpp alignment for D24 since using GL_UNSIGNED_INT as type
-    surface->gl_bytes_per_pixel =
-        (surface->pixel_format == PixelFormat::D24 || surface->type == SurfaceType::Texture) ?
-        4 :
-        surface->GetFormatBpp() / 8;
-
     surface->gl_buffer_size = 0;
-    surface->gl_buffer_offset = (surface->pixel_format == PixelFormat::D24) ? 1 : 0;
     surface->invalid_regions.insert(surface->GetInterval());
     AllocateSurfaceTexture(surface->texture.handle,
                            GetFormatTuple(surface->pixel_format),

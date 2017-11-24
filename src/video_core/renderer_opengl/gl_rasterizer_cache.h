@@ -88,8 +88,8 @@ struct SurfaceParams {
         Invalid = 5
     };
 
-    static unsigned int GetFormatBpp(SurfaceParams::PixelFormat format) {
-        static constexpr std::array<unsigned int, 18> bpp_table = {
+    static constexpr unsigned int GetFormatBpp(PixelFormat format) {
+        constexpr std::array<unsigned int, 18> bpp_table = {
             32, // RGBA8
             24, // RGB8
             16, // RGB5A1
@@ -162,7 +162,7 @@ struct SurfaceParams {
         return false;
     }
 
-    static SurfaceType GetFormatType(PixelFormat pixel_format) {
+    static constexpr SurfaceType GetFormatType(PixelFormat pixel_format) {
         if ((unsigned int)pixel_format < 5) {
             return SurfaceType::Color;
         }
@@ -270,8 +270,13 @@ struct CachedSurface : SurfaceParams {
 
     OGLTexture texture;
 
-    u32 gl_bytes_per_pixel;
-    int gl_buffer_offset;
+    static constexpr unsigned int GetGLBytesPerPixel(PixelFormat format) {
+        // OpenGL needs 4 bpp alignment for D24 since using GL_UNSIGNED_INT as type
+        return format == PixelFormat::Invalid ? 0 :
+            (format == PixelFormat::D24 || GetFormatType(format) == SurfaceType::Texture) ?
+            4 : SurfaceParams::GetFormatBpp(format) / 8;
+    }
+
     std::unique_ptr<u8[]> gl_buffer;
     size_t gl_buffer_size = 0;
 
