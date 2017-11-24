@@ -989,7 +989,10 @@ bool RasterizerOpenGL::AccelerateDisplayTransfer(const GPU::Regs::DisplayTransfe
     if (dst_surface == nullptr)
         return false;
 
-    if (src_surface->is_tiled != dst_surface->is_tiled && !config.flip_vertically)
+    if (src_surface->is_tiled != dst_surface->is_tiled)
+        std::swap(src_rect.top, src_rect.bottom);
+
+    if (config.flip_vertically)
         std::swap(src_rect.top, src_rect.bottom);
 
     if (!res_cache.BlitSurfaces(src_surface, src_rect, dst_surface, dst_rect))

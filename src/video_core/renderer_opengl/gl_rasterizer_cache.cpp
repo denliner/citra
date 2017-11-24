@@ -1439,6 +1439,20 @@ void RasterizerCacheOpenGL::InvalidateRegion(PAddr addr, u32 size, const Surface
             if (cached_surface == region_owner)
                 continue;
 
+            // If cpu is invalidating this region we want to remove it
+            // to (likely) mark the memory pages as uncached
+            // but before that we have to flush its region that is still valid
+            if (region_owner == nullptr && size <= 8) {
+                // If that surface has modified data outside of the invalidated range
+                // have to flush it first
+                const auto flush_intervals = SurfaceRegions(cached_surface->GetInterval()) - invalid_interval;
+                for (const auto& interval : flush_intervals) {
+                    FlushRegion(boost::icl::first(interval), boost::icl::length(interval), cached_surface);
+                }
+                remove_surfaces.emplace(cached_surface);
+                continue;
+            }
+
             const auto interval = cached_surface->GetInterval() & invalid_interval;
             cached_surface->invalid_regions.insert(interval);
 
