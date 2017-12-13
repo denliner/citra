@@ -2,6 +2,8 @@
 // Licensed under GPLv2 or any later version
 // Refer to the license.txt file included.
 
+#define CRYPTOPP_ENABLE_NAMESPACE_WEAK 1
+
 #include <cstring>
 #include <cryptopp/aes.h>
 #include <cryptopp/md5.h>
@@ -204,9 +206,10 @@ std::vector<u8> GeneratedEncryptedData(const NetworkInfo& network_info, const No
     }
 
     // Calculate the MD5 hash of the data in the buffer, not including the hash field.
-    std::array<u8, CryptoPP::MD5::DIGESTSIZE> hash;
-    CryptoPP::MD5().CalculateDigest(hash.data(), buffer.data() + offsetof(BeaconData, bitmask),
-                                    buffer.size() - sizeof(data.md5_hash));
+    std::array<u8, CryptoPP::Weak::MD5::DIGESTSIZE> hash;
+    CryptoPP::Weak::MD5().CalculateDigest(hash.data(),
+                                          buffer.data() + offsetof(BeaconData, bitmask),
+                                          buffer.size() - sizeof(data.md5_hash));
 
     // Copy the hash into the buffer.
     std::memcpy(buffer.data(), hash.data(), hash.size());
@@ -243,7 +246,7 @@ std::vector<u8> GenerateNintendoFirstEncryptedDataTag(const NetworkInfo& network
 
     EncryptedDataTag tag{};
     tag.header.tag_id = static_cast<u8>(TagId::VendorSpecific);
-    tag.header.length = sizeof(tag) - sizeof(TagHeader) + payload_size;
+    tag.header.length = static_cast<u8>(sizeof(tag) - sizeof(TagHeader) + payload_size);
     tag.oui_type = static_cast<u8>(NintendoTagId::EncryptedData0);
     tag.oui = NintendoOUI;
 
@@ -279,7 +282,7 @@ std::vector<u8> GenerateNintendoSecondEncryptedDataTag(const NetworkInfo& networ
 
     EncryptedDataTag tag{};
     tag.header.tag_id = static_cast<u8>(TagId::VendorSpecific);
-    tag.header.length = tag_length;
+    tag.header.length = static_cast<u8>(tag_length);
     tag.oui_type = static_cast<u8>(NintendoTagId::EncryptedData1);
     tag.oui = NintendoOUI;
 

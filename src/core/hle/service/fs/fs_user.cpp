@@ -2,6 +2,7 @@
 // Licensed under GPLv2 or any later version
 // Refer to the license.txt file included.
 
+#include <cinttypes>
 #include "common/assert.h"
 #include "common/common_types.h"
 #include "common/file_util.h"
@@ -14,8 +15,10 @@
 #include "core/hle/ipc_helpers.h"
 #include "core/hle/kernel/client_port.h"
 #include "core/hle/kernel/client_session.h"
+#include "core/hle/kernel/process.h"
 #include "core/hle/kernel/server_session.h"
 #include "core/hle/result.h"
+#include "core/hle/service/am/am.h"
 #include "core/hle/service/fs/archive.h"
 #include "core/hle/service/fs/fs_user.h"
 #include "core/settings.h"
@@ -71,7 +74,7 @@ static void OpenFile(Service::Interface* self) {
     FileSys::Mode mode;
     mode.hex = rp.Pop<u32>();
     u32 attributes = rp.Pop<u32>(); // TODO(Link Mauve): do something with those attributes.
-    VAddr filename_ptr = rp.PopStaticBuffer();
+    VAddr filename_ptr = rp.PopStaticBuffer(nullptr);
     FileSys::Path file_path(filename_type, filename_size, filename_ptr);
 
     LOG_DEBUG(Service_FS, "path=%s, mode=%u attrs=%u", file_path.DebugStr().c_str(), mode.hex,
@@ -83,11 +86,7 @@ static void OpenFile(Service::Interface* self) {
     rb.Push(file_res.Code());
     if (file_res.Succeeded()) {
         std::shared_ptr<File> file = *file_res;
-        auto sessions = ServerSession::CreateSessionPair(file->GetName());
-        file->ClientConnected(std::get<SharedPtr<ServerSession>>(sessions));
-
-        rb.PushMoveHandles(
-            Kernel::g_handle_table.Create(std::get<SharedPtr<ClientSession>>(sessions)).Unwrap());
+        rb.PushMoveHandles(Kernel::g_handle_table.Create(file->Connect()).Unwrap());
     } else {
         rb.PushMoveHandles(0);
         LOG_ERROR(Service_FS, "failed to get a handle for file %s", file_path.DebugStr().c_str());
@@ -149,11 +148,7 @@ static void OpenFileDirectly(Service::Interface* self) {
     cmd_buff[1] = file_res.Code().raw;
     if (file_res.Succeeded()) {
         std::shared_ptr<File> file = *file_res;
-        auto sessions = ServerSession::CreateSessionPair(file->GetName());
-        file->ClientConnected(std::get<SharedPtr<ServerSession>>(sessions));
-
-        cmd_buff[3] =
-            Kernel::g_handle_table.Create(std::get<SharedPtr<ClientSession>>(sessions)).Unwrap();
+        cmd_buff[3] = Kernel::g_handle_table.Create(file->Connect()).Unwrap();
     } else {
         cmd_buff[3] = 0;
         LOG_ERROR(Service_FS, "failed to get a handle for file %s mode=%u attributes=%u",
@@ -311,8 +306,8 @@ static void CreateFile(Service::Interface* self) {
 
     FileSys::Path file_path(filename_type, filename_size, filename_ptr);
 
-    LOG_DEBUG(Service_FS, "type=%u size=%llu data=%s", static_cast<u32>(filename_type), file_size,
-              file_path.DebugStr().c_str());
+    LOG_DEBUG(Service_FS, "type=%u size=%" PRIx64 " data=%s", static_cast<u32>(filename_type),
+              file_size, file_path.DebugStr().c_str());
 
     cmd_buff[1] = CreateFileInArchive(archive_handle, file_path, file_size).raw;
 }
@@ -919,6 +914,72 @@ static void GetFormatInfo(Service::Interface* self) {
     cmd_buff[5] = format_info->duplicate_data;
 }
 
+/**
+ * FS_User::GetProgramLaunchInfo service function.
+ *  Inputs:
+ *      0 : 0x082F0040
+ *      1 : Process ID
+ *  Outputs:
+ *      0 : 0x082F0140
+ *      1 : Result of function, 0 on success, otherwise error code
+ *      2-3 : Program ID
+ *      4 : Media type
+ *      5 : Unknown
+ */
+static void GetProgramLaunchInfo(Service::Interface* self) {
+    IPC::RequestParser rp(Kernel::GetCommandBuffer(), 0x82F, 1, 0);
+
+    u32 process_id = rp.Pop<u32>();
+
+    LOG_DEBUG(Service_FS, "process_id=%u", process_id);
+
+    // TODO(Subv): The real FS service manages its own process list and only checks the processes
+    // that were registered with the 'fs:REG' service.
+    auto process = Kernel::GetProcessById(process_id);
+
+    IPC::RequestBuilder rb = rp.MakeBuilder(5, 0);
+
+    if (process == nullptr) {
+        // Note: In this case, the rest of the parameters are not changed but the command header
+        // remains the same.
+        rb.Push(ResultCode(FileSys::ErrCodes::ArchiveNotMounted, ErrorModule::FS,
+                           ErrorSummary::NotFound, ErrorLevel::Status));
+        rb.Skip(4, false);
+        return;
+    }
+
+    u64 program_id = process->codeset->program_id;
+
+    auto media_type = Service::AM::GetTitleMediaType(program_id);
+
+    rb.Push(RESULT_SUCCESS);
+    rb.Push(program_id);
+    rb.Push(static_cast<u8>(media_type));
+
+    // TODO(Subv): Find out what this value means.
+    rb.Push<u32>(0);
+}
+
+/**
+ * FS_User::GetNumSeeds service function.
+ *  Inputs:
+ *      0 : 0x087D0000
+ *  Outputs:
+ *      0 : 0x087D0080
+ *      1 : Result of function, 0 on success, otherwise error code
+ *      2 : Number of seeds in the SEEDDB
+ */
+static void GetNumSeeds(Service::Interface* self) {
+    IPC::RequestParser rp(Kernel::GetCommandBuffer(), 0x87D, 0, 0);
+
+    LOG_WARNING(Service_FS, "(STUBBED) called");
+
+    IPC::RequestBuilder rb = rp.MakeBuilder(2, 0);
+
+    rb.Push(RESULT_SUCCESS);
+    rb.Push<u32>(0);
+}
+
 const Interface::FunctionInfo FunctionTable[] = {
     {0x000100C6, nullptr, "Dummy1"},
     {0x040100C4, nullptr, "Control"},
@@ -968,7 +1029,7 @@ const Interface::FunctionInfo FunctionTable[] = {
     {0x082C0082, nullptr, "CardNorDirectCpuWriteWithoutVerify"},
     {0x082D0040, nullptr, "CardNorDirectSectorEraseWithoutVerify"},
     {0x082E0040, nullptr, "GetProductInfo"},
-    {0x082F0040, nullptr, "GetProgramLaunchInfo"},
+    {0x082F0040, GetProgramLaunchInfo, "GetProgramLaunchInfo"},
     {0x08300182, nullptr, "CreateExtSaveData"},
     {0x08310180, nullptr, "CreateSharedExtSaveData"},
     {0x08320102, nullptr, "ReadExtSaveDataIcon"},
@@ -1029,6 +1090,7 @@ const Interface::FunctionInfo FunctionTable[] = {
     {0x08690000, nullptr, "GetNandEraseCount"},
     {0x086A0082, nullptr, "ReadNandReport"},
     {0x087A0180, nullptr, "AddSeed"},
+    {0x087D0000, GetNumSeeds, "GetNumSeeds"},
     {0x088600C0, nullptr, "CheckUpdatedDat"},
 };
 

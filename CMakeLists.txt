@@ -274,12 +274,14 @@ endif()
 # This function should be passed a list of all files in a target. It will automatically generate
 # file groups following the directory hierarchy, so that the layout of the files in IDEs matches the
 # one in the filesystem.
-function(create_directory_groups)
+function(create_target_directory_groups target_name)
     # Place any files that aren't in the source list in a separate group so that they don't get in
     # the way.
     source_group("Other Files" REGULAR_EXPRESSION ".")
 
-    foreach(file_name ${ARGV})
+    get_target_property(target_sources "${target_name}" SOURCES)
+
+    foreach(file_name IN LISTS target_sources)
         get_filename_component(dir_name "${file_name}" PATH)
         # Group names use '\' as a separator even though the entire rest of CMake uses '/'...
         string(REPLACE "/" "\\" group_name "${dir_name}")
@@ -303,6 +305,7 @@ get_timestamp(BUILD_DATE)
 enable_testing()
 add_subdirectory(externals)
 add_subdirectory(src)
+add_subdirectory(dist/installer)
 
 
 # Installation instructions
@@ -316,7 +319,7 @@ if(ENABLE_QT AND UNIX AND NOT APPLE)
     install(FILES "${CMAKE_SOURCE_DIR}/dist/citra.desktop"
             DESTINATION "${CMAKE_INSTALL_PREFIX}/share/applications")
     install(FILES "${CMAKE_SOURCE_DIR}/dist/citra.svg"
-            DESTINATION "${CMAKE_INSTALL_PREFIX}/share/pixmaps")
+            DESTINATION "${CMAKE_INSTALL_PREFIX}/share/icons/hicolor/scalable/apps")
     install(FILES "${CMAKE_SOURCE_DIR}/dist/citra.xml"
             DESTINATION "${CMAKE_INSTALL_PREFIX}/share/mime/packages")
 endif()

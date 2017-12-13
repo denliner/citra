@@ -12,10 +12,15 @@
 
 class ARM_DynCom final : public ARM_Interface {
 public:
-    ARM_DynCom(PrivilegeMode initial_mode);
+    explicit ARM_DynCom(PrivilegeMode initial_mode);
     ~ARM_DynCom();
 
+    void Run() override;
+    void Step() override;
+
     void ClearInstructionCache() override;
+    void InvalidateCacheRange(u32 start_address, size_t length) override;
+    void PageTableChanged() override;
 
     void SetPC(u32 pc) override;
     u32 GetPC() const override;
@@ -30,14 +35,13 @@ public:
     u32 GetCP15Register(CP15Register reg) override;
     void SetCP15Register(CP15Register reg, u32 value) override;
 
-    void AddTicks(u64 ticks) override;
-
     void SaveContext(ThreadContext& ctx) override;
     void LoadContext(const ThreadContext& ctx) override;
 
     void PrepareReschedule() override;
-    void ExecuteInstructions(int num_instructions) override;
 
 private:
+    void ExecuteInstructions(int num_instructions);
+
     std::unique_ptr<ARMul_State> state;
 };

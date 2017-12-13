@@ -4,6 +4,7 @@
 
 #pragma once
 
+#include <cstddef>
 #include "common/common_types.h"
 #include "core/arm/skyeye_common/arm_regformat.h"
 #include "core/arm/skyeye_common/vfp/asm_vfp.h"
@@ -24,22 +25,24 @@ public:
         u32 fpexc;
     };
 
-    /**
-     * Runs the CPU for the given number of instructions
-     * @param num_instructions Number of instructions to run
-     */
-    void Run(int num_instructions) {
-        ExecuteInstructions(num_instructions);
-        this->num_instructions += num_instructions;
-    }
+    /// Runs the CPU until an event happens
+    virtual void Run() = 0;
 
     /// Step CPU by one instruction
-    void Step() {
-        Run(1);
-    }
+    virtual void Step() = 0;
 
     /// Clear all instruction cache
     virtual void ClearInstructionCache() = 0;
+
+    /**
+     * Invalidate the code cache at a range of addresses.
+     * @param start_address The starting address of the range to invalidate.
+     * @param length The length (in bytes) of the range to invalidate.
+     */
+    virtual void InvalidateCacheRange(u32 start_address, size_t length) = 0;
+
+    /// Notify CPU emulation that page tables have changed
+    virtual void PageTableChanged() = 0;
 
     /**
      * Set the Program Counter to an address
@@ -122,12 +125,6 @@ public:
     virtual void SetCP15Register(CP15Register reg, u32 value) = 0;
 
     /**
-     * Advance the CPU core by the specified number of ticks (e.g. to simulate CPU execution time)
-     * @param ticks Number of ticks to advance the CPU core
-     */
-    virtual void AddTicks(u64 ticks) = 0;
-
-    /**
      * Saves the current CPU context
      * @param ctx Thread context to save
      */
@@ -141,22 +138,4 @@ public:
 
     /// Prepare core for thread reschedule (if needed to correctly handle state)
     virtual void PrepareReschedule() = 0;
-
-    /// Getter for num_instructions
-    u64 GetNumInstructions() const {
-        return num_instructions;
-    }
-
-    s64 down_count = 0; ///< A decreasing counter of remaining cycles before the next event,
-                        /// decreased by the cpu run loop
-
-protected:
-    /**
-     * Executes the given number of instructions
-     * @param num_instructions Number of instructions to executes
-     */
-    virtual void ExecuteInstructions(int num_instructions) = 0;
-
-private:
-    u64 num_instructions = 0; ///< Number of instructions executed
 };

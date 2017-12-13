@@ -21,6 +21,7 @@
 #include "core/hle/service/apt/bcfnt/bcfnt.h"
 #include "core/hle/service/cfg/cfg.h"
 #include "core/hle/service/fs/archive.h"
+#include "core/hle/service/ns/ns.h"
 #include "core/hle/service/ptm/ptm.h"
 #include "core/hle/service/service.h"
 #include "core/hw/aes/ccm.h"
@@ -65,6 +66,7 @@ union AppletAttributes {
     u32 raw;
 
     BitField<0, 3, u32> applet_pos;
+    BitField<29, 1, u32> is_home_menu;
 
     AppletAttributes() : raw(0) {}
     AppletAttributes(u32 attributes) : raw(attributes) {}
@@ -81,6 +83,74 @@ struct AppletSlotData {
 
 // Holds data about the concurrently running applets in the system.
 static std::array<AppletSlotData, NumAppletSlot> applet_slots = {};
+
+struct AppletTitleData {
+    // There are two possible applet ids for each applet.
+    std::array<AppletId, 2> applet_ids;
+
+    // There's a specific TitleId per region for each applet.
+    static constexpr size_t NumRegions = 7;
+    std::array<u64, NumRegions> title_ids;
+};
+
+static constexpr size_t NumApplets = 29;
+static constexpr std::array<AppletTitleData, NumApplets> applet_titleids = {{
+    {AppletId::HomeMenu, AppletId::None, 0x4003000008202, 0x4003000008F02, 0x4003000009802,
+     0x4003000008202, 0x400300000A102, 0x400300000A902, 0x400300000B102},
+    {AppletId::AlternateMenu, AppletId::None, 0x4003000008102, 0x4003000008102, 0x4003000008102,
+     0x4003000008102, 0x4003000008102, 0x4003000008102, 0x4003000008102},
+    {AppletId::Camera, AppletId::None, 0x4003000008402, 0x4003000009002, 0x4003000009902,
+     0x4003000008402, 0x400300000A202, 0x400300000AA02, 0x400300000B202},
+    {AppletId::FriendList, AppletId::None, 0x4003000008D02, 0x4003000009602, 0x4003000009F02,
+     0x4003000008D02, 0x400300000A702, 0x400300000AF02, 0x400300000B702},
+    {AppletId::GameNotes, AppletId::None, 0x4003000008702, 0x4003000009302, 0x4003000009C02,
+     0x4003000008702, 0x400300000A502, 0x400300000AD02, 0x400300000B502},
+    {AppletId::InternetBrowser, AppletId::None, 0x4003000008802, 0x4003000009402, 0x4003000009D02,
+     0x4003000008802, 0x400300000A602, 0x400300000AE02, 0x400300000B602},
+    {AppletId::InstructionManual, AppletId::None, 0x4003000008602, 0x4003000009202, 0x4003000009B02,
+     0x4003000008602, 0x400300000A402, 0x400300000AC02, 0x400300000B402},
+    {AppletId::Notifications, AppletId::None, 0x4003000008E02, 0x4003000009702, 0x400300000A002,
+     0x4003000008E02, 0x400300000A802, 0x400300000B002, 0x400300000B802},
+    {AppletId::Miiverse, AppletId::None, 0x400300000BC02, 0x400300000BD02, 0x400300000BE02,
+     0x400300000BC02, 0x4003000009E02, 0x4003000009502, 0x400300000B902},
+    // These values obtained from an older NS dump firmware 4.5
+    {AppletId::MiiversePost, AppletId::None, 0x400300000BA02, 0x400300000BA02, 0x400300000BA02,
+     0x400300000BA02, 0x400300000BA02, 0x400300000BA02, 0x400300000BA02},
+    // {AppletId::MiiversePost, AppletId::None, 0x4003000008302, 0x4003000008B02, 0x400300000BA02,
+    //  0x4003000008302, 0x0, 0x0, 0x0},
+    {AppletId::AmiiboSettings, AppletId::None, 0x4003000009502, 0x4003000009E02, 0x400300000B902,
+     0x4003000009502, 0x0, 0x4003000008C02, 0x400300000BF02},
+    {AppletId::SoftwareKeyboard1, AppletId::SoftwareKeyboard2, 0x400300000C002, 0x400300000C802,
+     0x400300000D002, 0x400300000C002, 0x400300000D802, 0x400300000DE02, 0x400300000E402},
+    {AppletId::Ed1, AppletId::Ed2, 0x400300000C102, 0x400300000C902, 0x400300000D102,
+     0x400300000C102, 0x400300000D902, 0x400300000DF02, 0x400300000E502},
+    {AppletId::PnoteApp, AppletId::PnoteApp2, 0x400300000C302, 0x400300000CB02, 0x400300000D302,
+     0x400300000C302, 0x400300000DB02, 0x400300000E102, 0x400300000E702},
+    {AppletId::SnoteApp, AppletId::SnoteApp2, 0x400300000C402, 0x400300000CC02, 0x400300000D402,
+     0x400300000C402, 0x400300000DC02, 0x400300000E202, 0x400300000E802},
+    {AppletId::Error, AppletId::Error2, 0x400300000C502, 0x400300000C502, 0x400300000C502,
+     0x400300000C502, 0x400300000CF02, 0x400300000CF02, 0x400300000CF02},
+    {AppletId::Mint, AppletId::Mint2, 0x400300000C602, 0x400300000CE02, 0x400300000D602,
+     0x400300000C602, 0x400300000DD02, 0x400300000E302, 0x400300000E902},
+    {AppletId::Extrapad, AppletId::Extrapad2, 0x400300000CD02, 0x400300000CD02, 0x400300000CD02,
+     0x400300000CD02, 0x400300000D502, 0x400300000D502, 0x400300000D502},
+    {AppletId::Memolib, AppletId::Memolib2, 0x400300000F602, 0x400300000F602, 0x400300000F602,
+     0x400300000F602, 0x400300000F602, 0x400300000F602, 0x400300000F602},
+    // TODO(Subv): Fill in the rest of the titleids
+}};
+
+static u64 GetTitleIdForApplet(AppletId id) {
+    ASSERT_MSG(id != AppletId::None, "Invalid applet id");
+
+    auto itr = std::find_if(applet_titleids.begin(), applet_titleids.end(),
+                            [id](const AppletTitleData& data) {
+                                return data.applet_ids[0] == id || data.applet_ids[1] == id;
+                            });
+
+    ASSERT_MSG(itr != applet_titleids.end(), "Unknown applet id 0x%03X", static_cast<u32>(id));
+
+    return itr->title_ids[CFG::GetRegionValue()];
+}
 
 // This overload returns nullptr if no applet with the specified id has been started.
 static AppletSlotData* GetAppletSlotData(AppletId id) {
@@ -158,6 +228,11 @@ static AppletSlotData* GetAppletSlotData(AppletAttributes attributes) {
     if (slot == AppletSlot::Error)
         return nullptr;
 
+    // The Home Menu is a system applet, however, it has its own applet slot so that it can run
+    // concurrently with other system applets.
+    if (slot == AppletSlot::SystemApplet && attributes.is_home_menu)
+        return &applet_slots[static_cast<size_t>(AppletSlot::HomeMenu)];
+
     return &applet_slots[static_cast<size_t>(slot)];
 }
 
@@ -165,7 +240,11 @@ void SendParameter(const MessageParameter& parameter) {
     next_parameter = parameter;
     // Signal the event to let the receiver know that a new parameter is ready to be read
     auto* const slot_data = GetAppletSlotData(static_cast<AppletId>(parameter.destination_id));
-    ASSERT(slot_data);
+    if (slot_data == nullptr) {
+        LOG_DEBUG(Service_APT, "No applet was registered with the id %03X",
+                  parameter.destination_id);
+        return;
+    }
 
     slot_data->parameter_event->Signal();
 }
@@ -197,6 +276,19 @@ void Initialize(Service::Interface* self) {
     rb.Push(RESULT_SUCCESS);
     rb.PushCopyHandles(Kernel::g_handle_table.Create(slot_data->notification_event).Unwrap(),
                        Kernel::g_handle_table.Create(slot_data->parameter_event).Unwrap());
+
+    if (slot_data->applet_id == AppletId::Application ||
+        slot_data->applet_id == AppletId::HomeMenu) {
+        // Initialize the APT parameter to wake up the application.
+        next_parameter.emplace();
+        next_parameter->signal = static_cast<u32>(SignalType::Wakeup);
+        next_parameter->sender_id = static_cast<u32>(AppletId::None);
+        next_parameter->destination_id = app_id;
+        // Not signaling the parameter event will cause the application (or Home Menu) to hang
+        // during startup. In the real console, it is usually the Kernel and Home Menu who cause NS
+        // to signal the HomeMenu and Application parameter events, respectively.
+        slot_data->parameter_event->Signal();
+    }
 }
 
 static u32 DecompressLZ11(const u8* in, u8* out) {
@@ -486,9 +578,6 @@ void SendParameter(Service::Interface* self) {
     size_t size;
     VAddr buffer = rp.PopStaticBuffer(&size);
 
-    std::shared_ptr<HLE::Applets::Applet> dest_applet =
-        HLE::Applets::Applet::Get(static_cast<AppletId>(dst_app_id));
-
     LOG_DEBUG(Service_APT,
               "called src_app_id=0x%08X, dst_app_id=0x%08X, signal_type=0x%08X,"
               "buffer_size=0x%08X, handle=0x%08X, size=0x%08zX, in_param_buffer_ptr=0x%08X",
@@ -503,12 +592,6 @@ void SendParameter(Service::Interface* self) {
         return;
     }
 
-    if (dest_applet == nullptr) {
-        LOG_ERROR(Service_APT, "Unknown applet id=0x%08X", dst_app_id);
-        rb.Push<u32>(-1); // TODO(Subv): Find the right error code
-        return;
-    }
-
     MessageParameter param;
     param.destination_id = dst_app_id;
     param.sender_id = src_app_id;
@@ -517,7 +600,14 @@ void SendParameter(Service::Interface* self) {
     param.buffer.resize(buffer_size);
     Memory::ReadBlock(buffer, param.buffer.data(), param.buffer.size());
 
-    rb.Push(dest_applet->ReceiveParameter(param));
+    SendParameter(param);
+
+    // If the applet is running in HLE mode, use the HLE interface to communicate with it.
+    if (auto dest_applet = HLE::Applets::Applet::Get(static_cast<AppletId>(dst_app_id))) {
+        rb.Push(dest_applet->ReceiveParameter(param));
+    } else {
+        rb.Push(RESULT_SUCCESS);
+    }
 }
 
 void ReceiveParameter(Service::Interface* self) {
@@ -533,7 +623,7 @@ void ReceiveParameter(Service::Interface* self) {
             "buffer_size is bigger than the size in the buffer descriptor (0x%08X > 0x%08zX)",
             buffer_size, static_buff_size);
 
-    LOG_DEBUG(Service_APT, "called app_id=0x%08X, buffer_size=0x%08zX", app_id, buffer_size);
+    LOG_DEBUG(Service_APT, "called app_id=0x%08X, buffer_size=0x%08X", app_id, buffer_size);
 
     if (!next_parameter) {
         IPC::RequestBuilder rb = rp.MakeBuilder(1, 0);
@@ -561,7 +651,7 @@ void ReceiveParameter(Service::Interface* self) {
                            ? Kernel::g_handle_table.Create(next_parameter->object).Unwrap()
                            : 0);
 
-    rb.PushStaticBuffer(buffer, static_cast<u32>(next_parameter->buffer.size()), 0);
+    rb.PushStaticBuffer(buffer, next_parameter->buffer.size(), 0);
 
     Memory::WriteBlock(buffer, next_parameter->buffer.data(), next_parameter->buffer.size());
 
@@ -582,7 +672,7 @@ void GlanceParameter(Service::Interface* self) {
             "buffer_size is bigger than the size in the buffer descriptor (0x%08X > 0x%08zX)",
             buffer_size, static_buff_size);
 
-    LOG_DEBUG(Service_APT, "called app_id=0x%08X, buffer_size=0x%08zX", app_id, buffer_size);
+    LOG_DEBUG(Service_APT, "called app_id=0x%08X, buffer_size=0x%08X", app_id, buffer_size);
 
     if (!next_parameter) {
         IPC::RequestBuilder rb = rp.MakeBuilder(1, 0);
@@ -609,7 +699,7 @@ void GlanceParameter(Service::Interface* self) {
                            ? Kernel::g_handle_table.Create(next_parameter->object).Unwrap()
                            : 0);
 
-    rb.PushStaticBuffer(buffer, static_cast<u32>(next_parameter->buffer.size()), 0);
+    rb.PushStaticBuffer(buffer, next_parameter->buffer.size(), 0);
 
     Memory::WriteBlock(buffer, next_parameter->buffer.data(), next_parameter->buffer.size());
 
@@ -699,7 +789,7 @@ void AppletUtility(Service::Interface* self) {
     u32 utility_command = rp.Pop<u32>();
     u32 input_size = rp.Pop<u32>();
     u32 output_size = rp.Pop<u32>();
-    VAddr input_addr = rp.PopStaticBuffer();
+    VAddr input_addr = rp.PopStaticBuffer(nullptr);
 
     VAddr output_addr = rp.PeekStaticBuffer(0);
 
@@ -746,57 +836,122 @@ void PrepareToStartLibraryApplet(Service::Interface* self) {
     IPC::RequestParser rp(Kernel::GetCommandBuffer(), 0x18, 1, 0); // 0x180040
     AppletId applet_id = static_cast<AppletId>(rp.Pop<u32>());
 
+    LOG_DEBUG(Service_APT, "called applet_id=%08X", static_cast<u32>(applet_id));
+
     IPC::RequestBuilder rb = rp.MakeBuilder(1, 0);
+
+    // The real APT service returns an error if there's a pending APT parameter when this function
+    // is called.
+    if (next_parameter) {
+        rb.Push(ResultCode(ErrCodes::ParameterPresent, ErrorModule::Applet,
+                           ErrorSummary::InvalidState, ErrorLevel::Status));
+        return;
+    }
+
+    const auto& slot = applet_slots[static_cast<size_t>(AppletSlot::LibraryApplet)];
+
+    if (slot.registered) {
+        rb.Push(ResultCode(ErrorDescription::AlreadyExists, ErrorModule::Applet,
+                           ErrorSummary::InvalidState, ErrorLevel::Status));
+        return;
+    }
+
+    auto process = NS::LaunchTitle(FS::MediaType::NAND, GetTitleIdForApplet(applet_id));
+    if (process) {
+        rb.Push(RESULT_SUCCESS);
+        return;
+    }
+
+    // If we weren't able to load the native applet title, try to fallback to an HLE implementation.
     auto applet = HLE::Applets::Applet::Get(applet_id);
     if (applet) {
-        LOG_WARNING(Service_APT, "applet has already been started id=%08X", applet_id);
+        LOG_WARNING(Service_APT, "applet has already been started id=%08X",
+                    static_cast<u32>(applet_id));
         rb.Push(RESULT_SUCCESS);
     } else {
         rb.Push(HLE::Applets::Applet::Create(applet_id));
     }
-    LOG_DEBUG(Service_APT, "called applet_id=%08X", applet_id);
+}
+
+void PrepareToStartNewestHomeMenu(Service::Interface* self) {
+    IPC::RequestParser rp(Kernel::GetCommandBuffer(), 0x1A, 0, 0); // 0x1A0000
+    IPC::RequestBuilder rb = rp.MakeBuilder(1, 0);
+
+    // TODO(Subv): This command can only be called by a System Applet (return 0xC8A0CC04 otherwise).
+
+    // This command must return an error when called, otherwise the Home Menu will try to reboot the
+    // system.
+    rb.Push(ResultCode(ErrorDescription::AlreadyExists, ErrorModule::Applet,
+                       ErrorSummary::InvalidState, ErrorLevel::Status));
+
+    LOG_DEBUG(Service_APT, "called");
 }
 
 void PreloadLibraryApplet(Service::Interface* self) {
     IPC::RequestParser rp(Kernel::GetCommandBuffer(), 0x16, 1, 0); // 0x160040
     AppletId applet_id = static_cast<AppletId>(rp.Pop<u32>());
 
+    LOG_DEBUG(Service_APT, "called applet_id=%08X", static_cast<u32>(applet_id));
+
     IPC::RequestBuilder rb = rp.MakeBuilder(1, 0);
+
+    const auto& slot = applet_slots[static_cast<size_t>(AppletSlot::LibraryApplet)];
+
+    if (slot.registered) {
+        rb.Push(ResultCode(ErrorDescription::AlreadyExists, ErrorModule::Applet,
+                           ErrorSummary::InvalidState, ErrorLevel::Status));
+        return;
+    }
+
+    auto process = NS::LaunchTitle(FS::MediaType::NAND, GetTitleIdForApplet(applet_id));
+    if (process) {
+        rb.Push(RESULT_SUCCESS);
+        return;
+    }
+
+    // If we weren't able to load the native applet title, try to fallback to an HLE implementation.
     auto applet = HLE::Applets::Applet::Get(applet_id);
     if (applet) {
-        LOG_WARNING(Service_APT, "applet has already been started id=%08X", applet_id);
+        LOG_WARNING(Service_APT, "applet has already been started id=%08X",
+                    static_cast<u32>(applet_id));
         rb.Push(RESULT_SUCCESS);
     } else {
         rb.Push(HLE::Applets::Applet::Create(applet_id));
     }
-    LOG_DEBUG(Service_APT, "called applet_id=%08X", applet_id);
 }
 
 void StartLibraryApplet(Service::Interface* self) {
     IPC::RequestParser rp(Kernel::GetCommandBuffer(), 0x1E, 2, 4); // 0x1E0084
     AppletId applet_id = static_cast<AppletId>(rp.Pop<u32>());
-    std::shared_ptr<HLE::Applets::Applet> applet = HLE::Applets::Applet::Get(applet_id);
-
-    LOG_DEBUG(Service_APT, "called applet_id=%08X", applet_id);
-
-    if (applet == nullptr) {
-        LOG_ERROR(Service_APT, "unknown applet id=%08X", applet_id);
-        IPC::RequestBuilder rb = rp.MakeBuilder(1, 0, false);
-        rb.Push<u32>(-1); // TODO(Subv): Find the right error code
-        return;
-    }
 
     size_t buffer_size = rp.Pop<u32>();
     Kernel::Handle handle = rp.PopHandle();
-    VAddr buffer_addr = rp.PopStaticBuffer();
+    VAddr buffer_addr = rp.PopStaticBuffer(nullptr);
 
-    AppletStartupParameter parameter;
-    parameter.object = Kernel::g_handle_table.GetGeneric(handle);
-    parameter.buffer.resize(buffer_size);
-    Memory::ReadBlock(buffer_addr, parameter.buffer.data(), parameter.buffer.size());
+    LOG_DEBUG(Service_APT, "called applet_id=%08X", static_cast<u32>(applet_id));
 
     IPC::RequestBuilder rb = rp.MakeBuilder(1, 0);
-    rb.Push(applet->Start(parameter));
+
+    // Send the Wakeup signal to the applet
+    MessageParameter param;
+    param.destination_id = static_cast<u32>(applet_id);
+    param.sender_id = static_cast<u32>(AppletId::Application);
+    param.object = Kernel::g_handle_table.GetGeneric(handle);
+    param.signal = static_cast<u32>(SignalType::Wakeup);
+    param.buffer.resize(buffer_size);
+    Memory::ReadBlock(buffer_addr, param.buffer.data(), param.buffer.size());
+    SendParameter(param);
+
+    // In case the applet is being HLEd, attempt to communicate with it.
+    if (auto applet = HLE::Applets::Applet::Get(applet_id)) {
+        AppletStartupParameter parameter;
+        parameter.object = Kernel::g_handle_table.GetGeneric(handle);
+        parameter.buffer.resize(buffer_size);
+        Memory::ReadBlock(buffer_addr, parameter.buffer.data(), parameter.buffer.size());
+        rb.Push(applet->Start(parameter));
+    } else {
+        rb.Push(RESULT_SUCCESS);
+    }
 }
 
 void CancelLibraryApplet(Service::Interface* self) {
@@ -817,7 +972,7 @@ void SetScreenCapPostPermission(Service::Interface* self) {
     IPC::RequestBuilder rb = rp.MakeBuilder(1, 0);
     rb.Push(RESULT_SUCCESS); // No error
     LOG_WARNING(Service_APT, "(STUBBED) screen_capture_post_permission=%u",
-                screen_capture_post_permission);
+                static_cast<u32>(screen_capture_post_permission));
 }
 
 void GetScreenCapPostPermission(Service::Interface* self) {
@@ -827,7 +982,7 @@ void GetScreenCapPostPermission(Service::Interface* self) {
     rb.Push(RESULT_SUCCESS); // No error
     rb.Push(static_cast<u32>(screen_capture_post_permission));
     LOG_WARNING(Service_APT, "(STUBBED) screen_capture_post_permission=%u",
-                screen_capture_post_permission);
+                static_cast<u32>(screen_capture_post_permission));
 }
 
 void GetAppletInfo(Service::Interface* self) {
@@ -849,7 +1004,7 @@ void GetAppletInfo(Service::Interface* self) {
         rb.Push(ResultCode(ErrorDescription::NotFound, ErrorModule::Applet, ErrorSummary::NotFound,
                            ErrorLevel::Status));
     }
-    LOG_WARNING(Service_APT, "(stubbed) called appid=%u", app_id);
+    LOG_WARNING(Service_APT, "(stubbed) called appid=%u", static_cast<u32>(app_id));
 }
 
 void GetStartupArgument(Service::Interface* self) {
@@ -878,7 +1033,7 @@ void GetStartupArgument(Service::Interface* self) {
     }
 
     LOG_WARNING(Service_APT, "(stubbed) called startup_argument_type=%u , parameter_size=0x%08x",
-                startup_argument_type, parameter_size);
+                static_cast<u32>(startup_argument_type), parameter_size);
 
     IPC::RequestBuilder rb = rp.MakeBuilder(2, 2);
     rb.Push(RESULT_SUCCESS);
@@ -1041,12 +1196,6 @@ void Init() {
         slot_data.parameter_event =
             Kernel::Event::Create(Kernel::ResetType::OneShot, "APT:Parameter");
     }
-
-    // Initialize the parameter to wake up the application.
-    next_parameter.emplace();
-    next_parameter->signal = static_cast<u32>(SignalType::Wakeup);
-    next_parameter->destination_id = static_cast<u32>(AppletId::Application);
-    applet_slots[static_cast<size_t>(AppletSlot::Application)].parameter_event->Signal();
 }
 
 void Shutdown() {

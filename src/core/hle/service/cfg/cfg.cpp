@@ -141,7 +141,7 @@ void GetCountryCodeString(Service::Interface* self) {
 
 void GetCountryCodeID(Service::Interface* self) {
     u32* cmd_buff = Kernel::GetCommandBuffer();
-    u16 country_code = cmd_buff[1];
+    u16 country_code = static_cast<u16>(cmd_buff[1]);
     u16 country_code_id = 0;
 
     // The following algorithm will fail if the first country code isn't 0.
@@ -227,7 +227,8 @@ void GetSystemModel(Service::Interface* self) {
 
     // TODO(Subv): Find out the correct error codes
     cmd_buff[1] =
-        Service::CFG::GetConfigInfoBlock(0x000F0004, 4, 0x8, reinterpret_cast<u8*>(&data)).raw;
+        Service::CFG::GetConfigInfoBlock(ConsoleModelBlockID, 4, 0x8, reinterpret_cast<u8*>(&data))
+            .raw;
     cmd_buff[2] = data & 0xFF;
 }
 
@@ -237,7 +238,8 @@ void GetModelNintendo2DS(Service::Interface* self) {
 
     // TODO(Subv): Find out the correct error codes
     cmd_buff[1] =
-        Service::CFG::GetConfigInfoBlock(0x000F0004, 4, 0x8, reinterpret_cast<u8*>(&data)).raw;
+        Service::CFG::GetConfigInfoBlock(ConsoleModelBlockID, 4, 0x8, reinterpret_cast<u8*>(&data))
+            .raw;
 
     u8 model = data & 0xFF;
     if (model == Service::CFG::NINTENDO_2DS)

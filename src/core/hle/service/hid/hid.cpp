@@ -41,9 +41,9 @@ static u32 next_gyroscope_index;
 static int enable_accelerometer_count; // positive means enabled
 static int enable_gyroscope_count;     // positive means enabled
 
-static int pad_update_event;
-static int accelerometer_update_event;
-static int gyroscope_update_event;
+static CoreTiming::EventType* pad_update_event;
+static CoreTiming::EventType* accelerometer_update_event;
+static CoreTiming::EventType* gyroscope_update_event;
 
 // Updating period for each HID device. These empirical values are measured from a 11.2 3DS.
 constexpr u64 pad_update_ticks = BASE_CLOCK_RATE_ARM11 / 234;
@@ -251,7 +251,7 @@ static void UpdateGyroscopeCallback(u64 userdata, int cycles_late) {
     Math::Vec3<float> gyro;
     std::tie(std::ignore, gyro) = motion_device->GetStatus();
     double stretch = Core::System::GetInstance().perf_stats.GetLastFrameTimeScale();
-    gyro *= gyroscope_coef * stretch;
+    gyro *= gyroscope_coef * static_cast<float>(stretch);
     gyroscope_entry.x = static_cast<s16>(gyro.x);
     gyroscope_entry.y = static_cast<s16>(gyro.y);
     gyroscope_entry.z = static_cast<s16>(gyro.z);

@@ -4,15 +4,23 @@
 
 #pragma once
 
+#include <map>
 #include <memory>
 #include <dynarmic/dynarmic.h>
 #include "common/common_types.h"
 #include "core/arm/arm_interface.h"
 #include "core/arm/skyeye_common/armstate.h"
 
+namespace Memory {
+struct PageTable;
+} // namespace Memory
+
 class ARM_Dynarmic final : public ARM_Interface {
 public:
-    ARM_Dynarmic(PrivilegeMode initial_mode);
+    explicit ARM_Dynarmic(PrivilegeMode initial_mode);
+
+    void Run() override;
+    void Step() override;
 
     void SetPC(u32 pc) override;
     u32 GetPC() const override;
@@ -27,17 +35,18 @@ public:
     u32 GetCP15Register(CP15Register reg) override;
     void SetCP15Register(CP15Register reg, u32 value) override;
 
-    void AddTicks(u64 ticks) override;
-
     void SaveContext(ThreadContext& ctx) override;
     void LoadContext(const ThreadContext& ctx) override;
 
     void PrepareReschedule() override;
-    void ExecuteInstructions(int num_instructions) override;
 
     void ClearInstructionCache() override;
+    void InvalidateCacheRange(u32 start_address, size_t length) override;
+    void PageTableChanged() override;
 
 private:
-    std::unique_ptr<Dynarmic::Jit> jit;
+    Dynarmic::Jit* jit = nullptr;
+    Memory::PageTable* current_page_table = nullptr;
+    std::map<Memory::PageTable*, std::unique_ptr<Dynarmic::Jit>> jits;
     std::shared_ptr<ARMul_State> interpreter_state;
 };

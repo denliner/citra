@@ -31,7 +31,7 @@ Regs g_regs;
 /// 268MHz CPU clocks / 60Hz frames per second
 const u64 frame_ticks = static_cast<u64>(BASE_CLOCK_RATE_ARM11 / SCREEN_REFRESH_RATE);
 /// Event id for CoreTiming
-static int vblank_event;
+static CoreTiming::EventType* vblank_event;
 
 template <typename T>
 inline void Read(T& var, const u32 raw_addr) {
@@ -65,7 +65,7 @@ static Math::Vec4<u8> DecodePixel(Regs::PixelFormat input_format, const u8* src_
         return Color::DecodeRGBA4(src_pixel);
 
     default:
-        LOG_ERROR(HW_GPU, "Unknown source framebuffer format %x", input_format);
+        LOG_ERROR(HW_GPU, "Unknown source framebuffer format %x", static_cast<u32>(input_format));
         return {0, 0, 0, 0};
     }
 }
@@ -303,7 +303,7 @@ static void DisplayTransfer(const Regs::DisplayTransferConfig& config) {
 
             default:
                 LOG_ERROR(HW_GPU, "Unknown destination framebuffer format %x",
-                          config.output_format.Value());
+                          static_cast<u32>(config.output_format.Value()));
                 break;
             }
         }

@@ -168,6 +168,8 @@ RasterizerOpenGL::RasterizerOpenGL() : shader_dirty(true) {
     glActiveTexture(TextureUnits::ProcTexDiffLUT.Enum());
     glTexBuffer(GL_TEXTURE_BUFFER, GL_RGBA32F, proctex_diff_lut_buffer.handle);
 
+    glEnable(GL_BLEND);
+
     // Sync fixed function OpenGL state
     SyncClipEnabled();
     SyncClipCoef();
@@ -1338,7 +1340,8 @@ void RasterizerOpenGL::SyncCullMode() {
         break;
 
     default:
-        LOG_CRITICAL(Render_OpenGL, "Unknown cull mode %d", regs.rasterizer.cull_mode.Value());
+        LOG_CRITICAL(Render_OpenGL, "Unknown cull mode %u",
+                     static_cast<u32>(regs.rasterizer.cull_mode.Value()));
         UNIMPLEMENTED();
         break;
     }

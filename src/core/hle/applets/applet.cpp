@@ -38,8 +38,8 @@ namespace HLE {
 namespace Applets {
 
 static std::unordered_map<Service::APT::AppletId, std::shared_ptr<Applet>> applets;
-static u32 applet_update_event =
-    -1; ///< The CoreTiming event identifier for the Applet update callback.
+/// The CoreTiming event identifier for the Applet update callback.
+static CoreTiming::EventType* applet_update_event = nullptr;
 /// The interval at which the Applet update callback will be called, 16.6ms
 static const u64 applet_update_interval_us = 16666;
 
@@ -62,7 +62,7 @@ ResultCode Applet::Create(Service::APT::AppletId id) {
         applets[id] = std::make_shared<Mint>(id);
         break;
     default:
-        LOG_ERROR(Service_APT, "Could not create applet %u", id);
+        LOG_ERROR(Service_APT, "Could not create applet %u", static_cast<u32>(id));
         // TODO(Subv): Find the right error code
         return ResultCode(ErrorDescription::NotFound, ErrorModule::Applet,
                           ErrorSummary::NotSupported, ErrorLevel::Permanent);
@@ -82,7 +82,7 @@ std::shared_ptr<Applet> Applet::Get(Service::APT::AppletId id) {
 static void AppletUpdateEvent(u64 applet_id, int cycles_late) {
     Service::APT::AppletId id = static_cast<Service::APT::AppletId>(applet_id);
     std::shared_ptr<Applet> applet = Applet::Get(id);
-    ASSERT_MSG(applet != nullptr, "Applet doesn't exist! applet_id=%08X", id);
+    ASSERT_MSG(applet != nullptr, "Applet doesn't exist! applet_id=%08X", static_cast<u32>(id));
 
     applet->Update();
 

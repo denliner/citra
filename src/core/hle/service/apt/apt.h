@@ -77,7 +77,7 @@ enum class AppletId : u32 {
     HomeMenu = 0x101,
     AlternateMenu = 0x103,
     Camera = 0x110,
-    FriendsList = 0x112,
+    FriendList = 0x112,
     GameNotes = 0x113,
     InternetBrowser = 0x114,
     InstructionManual = 0x115,
@@ -95,6 +95,7 @@ enum class AppletId : u32 {
     Extrapad = 0x208,
     Memolib = 0x209,
     Application = 0x300,
+    Tiger = 0x301,
     AnyLibraryApplet = 0x400,
     SoftwareKeyboard2 = 0x401,
     Ed2 = 0x402,
@@ -418,6 +419,16 @@ void GetAppCpuTimeLimit(Service::Interface* self);
  *      1 : Result of function, 0 on success, otherwise error code
  */
 void PrepareToStartLibraryApplet(Service::Interface* self);
+
+/**
+ * APT::PrepareToStartNewestHomeMenu service function
+ *  Inputs:
+ *      0 : Command header [0x001A0000]
+ *  Outputs:
+ *      0 : Return header
+ *      1 : Result of function
+ */
+void PrepareToStartNewestHomeMenu(Service::Interface* self);
 
 /**
  * APT::PreloadLibraryApplet service function

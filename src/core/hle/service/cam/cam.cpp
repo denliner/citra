@@ -117,7 +117,7 @@ constexpr std::array<int, 13> LATENCY_BY_FRAME_RATE{{
 
 std::array<CameraConfig, NumCameras> cameras;
 std::array<PortConfig, 2> ports;
-int completion_event_callback;
+CoreTiming::EventType* completion_event_callback;
 
 const ResultCode ERROR_INVALID_ENUM_VALUE(ErrorDescription::InvalidEnumValue, ErrorModule::CAM,
                                           ErrorSummary::InvalidArgument, ErrorLevel::Usage);
@@ -177,7 +177,7 @@ void CompletionEventCallBack(u64 port_id, int) {
             LOG_ERROR(Service_CAM, "The destination size (%u) doesn't match the source (%zu)!",
                       port.dest_size, buffer_size);
         }
-        Memory::WriteBlock(port.dest, buffer.data(), std::min<u32>(port.dest_size, buffer_size));
+        Memory::WriteBlock(port.dest, buffer.data(), std::min<size_t>(port.dest_size, buffer_size));
     }
 
     port.is_receiving = false;

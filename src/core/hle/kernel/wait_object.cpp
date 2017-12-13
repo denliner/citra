@@ -34,12 +34,13 @@ void WaitObject::RemoveWaitingThread(Thread* thread) {
 
 SharedPtr<Thread> WaitObject::GetHighestPriorityReadyThread() {
     Thread* candidate = nullptr;
-    s32 candidate_priority = THREADPRIO_LOWEST + 1;
+    u32 candidate_priority = THREADPRIO_LOWEST + 1;
 
     for (const auto& thread : waiting_threads) {
         // The list of waiting threads must not contain threads that are not waiting to be awakened.
         ASSERT_MSG(thread->status == THREADSTATUS_WAIT_SYNCH_ANY ||
-                       thread->status == THREADSTATUS_WAIT_SYNCH_ALL,
+                       thread->status == THREADSTATUS_WAIT_SYNCH_ALL ||
+                       thread->status == THREADSTATUS_WAIT_HLE_EVENT,
                    "Inconsistent thread statuses in waiting_threads");
 
         if (thread->current_priority >= candidate_priority)
@@ -71,23 +72,20 @@ void WaitObject::WakeupAllWaitingThreads() {
     while (auto thread = GetHighestPriorityReadyThread()) {
         if (!thread->IsSleepingOnWaitAll()) {
             Acquire(thread.get());
-            // Set the output index of the WaitSynchronizationN call to the index of this object.
-            if (thread->wait_set_output) {
-                thread->SetWaitSynchronizationOutput(thread->GetWaitObjectIndex(this));
-                thread->wait_set_output = false;
-            }
         } else {
             for (auto& object : thread->wait_objects) {
                 object->Acquire(thread.get());
             }
-            // Note: This case doesn't update the output index of WaitSynchronizationN.
         }
+
+        // Invoke the wakeup callback before clearing the wait objects
+        if (thread->wakeup_callback)
+            thread->wakeup_callback(ThreadWakeupReason::Signal, thread, this);
 
         for (auto& object : thread->wait_objects)
             object->RemoveWaitingThread(thread.get());
         thread->wait_objects.clear();
 
-        thread->SetWaitSynchronizationResult(RESULT_SUCCESS);
         thread->ResumeFromWait();
     }
 }

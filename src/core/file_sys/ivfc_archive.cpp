@@ -4,6 +4,7 @@
 
 #include <cstring>
 #include <memory>
+#include <utility>
 #include "common/common_types.h"
 #include "common/logging/log.h"
 #include "core/file_sys/ivfc_archive.h"
@@ -12,6 +13,9 @@
 // FileSys namespace
 
 namespace FileSys {
+
+IVFCArchive::IVFCArchive(std::shared_ptr<FileUtil::IOFile> file, u64 offset, u64 size)
+    : romfs_file(std::move(file)), data_offset(offset), data_size(size) {}
 
 std::string IVFCArchive::GetName() const {
     return "IVFC";
@@ -85,6 +89,9 @@ u64 IVFCArchive::GetFreeBytes() const {
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
+IVFCFile::IVFCFile(std::shared_ptr<FileUtil::IOFile> file, u64 offset, u64 size)
+    : romfs_file(std::move(file)), data_offset(offset), data_size(size) {}
+
 ResultVal<size_t> IVFCFile::Read(const u64 offset, const size_t length, u8* buffer) const {
     LOG_TRACE(Service_FS, "called offset=%llu, length=%zu", offset, length);
     romfs_file->Seek(data_offset + offset, SEEK_SET);
@@ -94,7 +101,7 @@ ResultVal<size_t> IVFCFile::Read(const u64 offset, const size_t length, u8* buff
 }
 
 ResultVal<size_t> IVFCFile::Write(const u64 offset, const size_t length, const bool flush,
-                                  const u8* buffer) const {
+                                  const u8* buffer) {
     LOG_ERROR(Service_FS, "Attempted to write to IVFC file");
     // TODO(Subv): Find error code
     return MakeResult<size_t>(0);

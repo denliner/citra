@@ -20,8 +20,7 @@
 #include "input_common/motion_emu.h"
 #include "network/network.h"
 
-EmuThread::EmuThread(GRenderWindow* render_window)
-    : exec_step(false), running(false), stop_run(false), render_window(render_window) {}
+EmuThread::EmuThread(GRenderWindow* render_window) : render_window(render_window) {}
 
 void EmuThread::run() {
     render_window->MakeCurrent();
@@ -30,9 +29,9 @@ void EmuThread::run() {
 
     stop_run = false;
 
-    // holds whether the cpu was running during the last iteration,
+    // Holds whether the cpu was running during the last iteration,
     // so that the DebugModeLeft signal can be emitted before the
-    // next execution step
+    // next execution step.
     bool was_active = false;
     while (!stop_run) {
         if (running) {

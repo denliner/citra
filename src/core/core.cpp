@@ -13,6 +13,7 @@
 #include "core/core_timing.h"
 #include "core/gdbstub/gdbstub.h"
 #include "core/hle/kernel/kernel.h"
+#include "core/hle/kernel/process.h"
 #include "core/hle/kernel/thread.h"
 #include "core/hle/service/service.h"
 #include "core/hw/hw.h"
@@ -26,7 +27,7 @@ namespace Core {
 
 /*static*/ System System::s_instance;
 
-System::ResultStatus System::RunLoop(int tight_loop) {
+System::ResultStatus System::RunLoop(bool tight_loop) {
     status = ResultStatus::Success;
     if (!cpu_core) {
         return ResultStatus::ErrorNotInitialized;
@@ -55,7 +56,12 @@ System::ResultStatus System::RunLoop(int tight_loop) {
         CoreTiming::Advance();
         PrepareReschedule();
     } else {
-        cpu_core->Run(tight_loop);
+        CoreTiming::Advance();
+        if (tight_loop) {
+            cpu_core->Run();
+        } else {
+            cpu_core->Step();
+        }
     }
 
     HW::Update();
@@ -65,7 +71,7 @@ System::ResultStatus System::RunLoop(int tight_loop) {
 }
 
 System::ResultStatus System::SingleStep() {
-    return RunLoop(1);
+    return RunLoop(false);
 }
 
 System::ResultStatus System::Load(EmuWindow* emu_window, const std::string& filepath) {
@@ -81,7 +87,6 @@ System::ResultStatus System::Load(EmuWindow* emu_window, const std::string& file
     if (system_mode.second != Loader::ResultStatus::Success) {
         LOG_CRITICAL(Core, "Failed to determine system mode (Error %i)!",
                      static_cast<int>(system_mode.second));
-        System::Shutdown();
 
         switch (system_mode.second) {
         case Loader::ResultStatus::ErrorEncrypted:
@@ -95,14 +100,15 @@ System::ResultStatus System::Load(EmuWindow* emu_window, const std::string& file
 
     ResultStatus init_result{Init(emu_window, system_mode.first.get())};
     if (init_result != ResultStatus::Success) {
-        LOG_CRITICAL(Core, "Failed to initialize system (Error %i)!", init_result);
+        LOG_CRITICAL(Core, "Failed to initialize system (Error %u)!",
+                     static_cast<u32>(init_result));
         System::Shutdown();
         return init_result;
     }
 
-    const Loader::ResultStatus load_result{app_loader->Load()};
+    const Loader::ResultStatus load_result{app_loader->Load(Kernel::g_current_process)};
     if (Loader::ResultStatus::Success != load_result) {
-        LOG_CRITICAL(Core, "Failed to load ROM (Error %i)!", load_result);
+        LOG_CRITICAL(Core, "Failed to load ROM (Error %u)!", static_cast<u32>(load_result));
         System::Shutdown();
 
         switch (load_result) {
@@ -114,6 +120,7 @@ System::ResultStatus System::Load(EmuWindow* emu_window, const std::string& file
             return ResultStatus::ErrorLoader;
         }
     }
+    Memory::SetCurrentPageTable(&Kernel::g_current_process->vm_manager.page_table);
     status = ResultStatus::Success;
     return status;
 }
@@ -196,4 +203,4 @@ void System::Shutdown() {
     LOG_DEBUG(Core, "Shutdown OK");
 }
 
-} // namespace
+} // namespace Core

@@ -2,28 +2,33 @@
 // Licensed under GPLv2 or any later version
 // Refer to the license.txt file included.
 
-#ifndef _CITRA_QT_MAIN_HXX_
-#define _CITRA_QT_MAIN_HXX_
+#pragma once
 
 #include <memory>
 #include <QMainWindow>
 #include <QTimer>
 #include "core/core.h"
+#include "core/hle/service/am/am.h"
 #include "ui_main.h"
 
+class AboutDialog;
 class Config;
 class EmuThread;
 class GameList;
 class GImageInfo;
-class GPUCommandStreamWidget;
 class GPUCommandListWidget;
+class GPUCommandStreamWidget;
 class GraphicsBreakPointsWidget;
 class GraphicsTracingWidget;
 class GraphicsVertexShaderWidget;
 class GRenderWindow;
 class MicroProfileDialog;
 class ProfilerWidget;
+template <typename>
+class QFutureWatcher;
+class QProgressBar;
 class RegistersWidget;
+class Updater;
 class WaitTreeWidget;
 
 class GMainWindow : public QMainWindow {
@@ -63,6 +68,7 @@ signals:
      * system emulation handles and memory are still valid, but are about become invalid.
      */
     void EmulationStopping();
+    void UpdateProgress(size_t written, size_t total);
 
 private:
     void InitializeWidgets();
@@ -81,6 +87,10 @@ private:
     void ShutdownGame();
 
     void ShowCallouts();
+    void ShowUpdaterWidgets();
+    void ShowUpdatePrompt();
+    void ShowNoUpdatePrompt();
+    void CheckForUpdates();
 
     /**
      * Stores the filename in the recently loaded files list.
@@ -120,6 +130,9 @@ private slots:
     void OnGameListLoadFile(QString game_path);
     void OnGameListOpenSaveFolder(u64 program_id);
     void OnMenuLoadFile();
+    void OnMenuInstallCIA();
+    void OnUpdateProgress(size_t written, size_t total);
+    void OnCIAInstallFinished();
     /// Called whenever a user selects the "File->Select Game List Root" menu item
     void OnMenuSelectGameListRoot();
     void OnMenuRecentFile();
@@ -127,9 +140,17 @@ private slots:
     void OnConfigure();
     void OnToggleFilterBar();
     void OnDisplayTitleBars(bool);
+    void ToggleFullscreen();
+    void ShowFullscreen();
+    void HideFullscreen();
     void ToggleWindowMode();
     void OnCreateGraphicsSurfaceViewer();
     void OnCoreError(Core::System::ResultStatus, std::string);
+    /// Called whenever a user selects Help->About Citra
+    void OnMenuAboutCitra();
+    void OnUpdateFound(bool found, bool error);
+    void OnCheckForUpdates();
+    void OnOpenUpdater();
 
 private:
     void UpdateStatusBar();
@@ -138,8 +159,10 @@ private:
 
     GRenderWindow* render_window;
     GameList* game_list;
+    QFutureWatcher<Service::AM::InstallStatus>* watcher = nullptr;
 
     // Status bar elements
+    QProgressBar* progress_bar = nullptr;
     QLabel* message_label = nullptr;
     QLabel* emu_speed_label = nullptr;
     QLabel* game_fps_label = nullptr;
@@ -162,6 +185,10 @@ private:
     GraphicsVertexShaderWidget* graphicsVertexShaderWidget;
     GraphicsTracingWidget* graphicsTracingWidget;
     WaitTreeWidget* waitTreeWidget;
+    Updater* updater;
+
+    bool explicit_update_check = false;
+    bool defer_update_prompt = false;
 
     QAction* actions_recent_files[max_recent_files_item];
 
@@ -171,4 +198,4 @@ protected:
     void dragMoveEvent(QDragMoveEvent* event) override;
 };
 
-#endif // _CITRA_QT_MAIN_HXX_
+Q_DECLARE_METATYPE(size_t);

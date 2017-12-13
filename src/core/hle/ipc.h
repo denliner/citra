@@ -40,12 +40,15 @@ static const int kStaticBuffersOffset = 0x100;
 inline u32* GetStaticBuffers(const int offset = 0) {
     return GetCommandBuffer(kStaticBuffersOffset + offset);
 }
-}
+} // namespace Kernel
 
 namespace IPC {
 
 /// Size of the command buffer area, in 32-bit words.
 constexpr size_t COMMAND_BUFFER_LENGTH = 0x100 / sizeof(u32);
+
+// Maximum number of static buffers per thread.
+constexpr size_t MAX_STATIC_BUFFERS = 16;
 
 // These errors are commonly returned by invalid IPC translations, so alias them here for
 // convenience.
@@ -122,11 +125,11 @@ union StaticBufferDescInfo {
     BitField<14, 18, u32> size;
 };
 
-inline u32 StaticBufferDesc(u32 size, u8 buffer_id) {
+inline u32 StaticBufferDesc(size_t size, u8 buffer_id) {
     StaticBufferDescInfo info{};
     info.descriptor_type.Assign(StaticBuffer);
     info.buffer_id.Assign(buffer_id);
-    info.size.Assign(size);
+    info.size.Assign(static_cast<u32>(size));
     return info.raw;
 }
 
@@ -160,11 +163,11 @@ union MappedBufferDescInfo {
     BitField<4, 28, u32> size;
 };
 
-inline u32 MappedBufferDesc(u32 size, MappedBufferPermissions perms) {
+inline u32 MappedBufferDesc(size_t size, MappedBufferPermissions perms) {
     MappedBufferDescInfo info{};
     info.flags.Assign(MappedBuffer);
     info.perms.Assign(perms);
-    info.size.Assign(size);
+    info.size.Assign(static_cast<u32>(size));
     return info.raw;
 }
 
