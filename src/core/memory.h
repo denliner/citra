@@ -72,12 +72,6 @@ struct PageTable {
      * the corresponding entry in `pointers` MUST be set to null.
      */
     std::array<PageType, PAGE_TABLE_NUM_ENTRIES> attributes;
-
-    /**
-     * Indicates the number of externally cached resources touching a page that should be
-     * flushed before the memory is accessed
-     */
-    std::array<u8, PAGE_TABLE_NUM_ENTRIES> cached_res_count;
 };
 
 /// Physical memory regions as seen from the ARM11
@@ -211,7 +205,9 @@ void ReadBlock(const VAddr src_addr, void* dest_buffer, size_t size);
 void WriteBlock(const Kernel::Process& process, const VAddr dest_addr, const void* src_buffer,
                 size_t size);
 void WriteBlock(const VAddr dest_addr, const void* src_buffer, size_t size);
+void ZeroBlock(const Kernel::Process& process, const VAddr dest_addr, const size_t size);
 void ZeroBlock(const VAddr dest_addr, const size_t size);
+void CopyBlock(const Kernel::Process& process, VAddr dest_addr, VAddr src_addr, size_t size);
 void CopyBlock(VAddr dest_addr, VAddr src_addr, size_t size);
 
 u8* GetPointer(VAddr virtual_address);
@@ -243,15 +239,19 @@ boost::optional<VAddr> PhysicalToVirtualAddress(PAddr addr);
 u8* GetPhysicalPointer(PAddr address);
 
 /**
- * Adds the supplied value to the rasterizer resource cache counter of each
- * page touching the region.
+ * Mark each page touching the region as cached.
  */
-void RasterizerMarkRegionCached(PAddr start, u32 size, int count_delta);
+void RasterizerMarkRegionCached(PAddr start, u32 size, bool cached);
 
 /**
  * Flushes any externally cached rasterizer resources touching the given region.
  */
 void RasterizerFlushRegion(PAddr start, u32 size);
+
+/**
+ * Invalidates any externally cached rasterizer resources touching the given region.
+ */
+void RasterizerInvalidateRegion(PAddr start, u32 size);
 
 /**
  * Flushes and invalidates any externally cached rasterizer resources touching the given region.
@@ -261,6 +261,8 @@ void RasterizerFlushAndInvalidateRegion(PAddr start, u32 size);
 enum class FlushMode {
     /// Write back modified surfaces to RAM
     Flush,
+    /// Remove region from the cache
+    Invalidate,
     /// Write back modified surfaces to RAM, and also remove them from the cache
     FlushAndInvalidate,
 };
