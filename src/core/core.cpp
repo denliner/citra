@@ -27,7 +27,7 @@ namespace Core {
 
 /*static*/ System System::s_instance;
 
-System::ResultStatus System::RunLoop(int tight_loop) {
+System::ResultStatus System::RunLoop(bool tight_loop) {
     status = ResultStatus::Success;
     if (!cpu_core) {
         return ResultStatus::ErrorNotInitialized;
@@ -56,7 +56,12 @@ System::ResultStatus System::RunLoop(int tight_loop) {
         CoreTiming::Advance();
         PrepareReschedule();
     } else {
-        cpu_core->Run(tight_loop);
+        CoreTiming::Advance();
+        if (tight_loop) {
+            cpu_core->Run();
+        } else {
+            cpu_core->Step();
+        }
     }
 
     HW::Update();
@@ -66,7 +71,7 @@ System::ResultStatus System::RunLoop(int tight_loop) {
 }
 
 System::ResultStatus System::SingleStep() {
-    return RunLoop(1);
+    return RunLoop(false);
 }
 
 System::ResultStatus System::Load(EmuWindow* emu_window, const std::string& filepath) {
@@ -82,7 +87,6 @@ System::ResultStatus System::Load(EmuWindow* emu_window, const std::string& file
     if (system_mode.second != Loader::ResultStatus::Success) {
         LOG_CRITICAL(Core, "Failed to determine system mode (Error %i)!",
                      static_cast<int>(system_mode.second));
-        System::Shutdown();
 
         switch (system_mode.second) {
         case Loader::ResultStatus::ErrorEncrypted:

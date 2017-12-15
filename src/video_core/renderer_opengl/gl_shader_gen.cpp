@@ -41,7 +41,7 @@ struct LightSrc {
 };
 
 layout (std140) uniform shader_data {
-    vec2 framebuffer_scale;
+    int framebuffer_scale;
     int alphatest_ref;
     float depth_scale;
     float depth_offset;
@@ -234,7 +234,7 @@ static void AppendSource(std::string& out, const PicaShaderConfig& config,
     using Source = TevStageConfig::Source;
     switch (source) {
     case Source::PrimaryColor:
-        out += "primary_color";
+        out += "rounded_primary_color";
         break;
     case Source::PrimaryFragmentColor:
         out += "primary_fragment_color";
@@ -1100,8 +1100,11 @@ float LookupLightingLUTSigned(int lut_index, float pos) {
     if (config.state.proctex.enable)
         AppendProcTexSampler(out, config);
 
+    // We round the interpolated primary color to the nearest 1/255th
+    // This maintains the PICA's 8 bits of precision
     out += R"(
 void main() {
+vec4 rounded_primary_color = round(primary_color * 255.0) / 255.0;
 vec4 primary_fragment_color = vec4(0.0);
 vec4 secondary_fragment_color = vec4(0.0);
 )";

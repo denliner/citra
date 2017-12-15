@@ -39,6 +39,7 @@ set(SRCS
             string_util.cpp
             telemetry.cpp
             thread.cpp
+            thread_pool.h
             timer.cpp
             )
 
